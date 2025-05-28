@@ -4,9 +4,17 @@ import mysql.connector
 import math
 import networkx as nx
 
-
 import tkinter as tk
 from tkinter import ttk, simpledialog, messagebox
+
+# Conexión a la base de datos
+cnx = mysql.connector.connect(
+    host='localhost',
+    user='admin',
+    password='123',
+    database='login'
+)
+cursor = cnx.cursor(dictionary=True)
 
 def confirmar(username):
     query = "SELECT * FROM users WHERE username = %s"
@@ -74,14 +82,6 @@ def none(x):
         return None
     return x
 
-# Conexión a la base de datos
-cnx = mysql.connector.connect(
-    host='localhost',
-    user='admin',
-    password='123',
-    database='login'
-)
-cursor = cnx.cursor(dictionary=True)
 
 # Cargar datos de la base de datos en un frame
 cursor.execute("SELECT * FROM songs")
