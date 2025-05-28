@@ -2,8 +2,68 @@ import pandas as pd
 from sklearn.metrics.pairwise import euclidean_distances
 import mysql.connector
 import math
+
+
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, simpledialog, messagebox
+
+def confirmar(username):
+    query = "SELECT * FROM users WHERE username = %s"
+    cursor.execute(query, (username,))
+    return cursor.fetchone() is not None
+
+def registrar():
+    reg_window = tk.Tk()
+    reg_window.withdraw()
+
+    username = simpledialog.askstring("Registro", "Nuevo usuario:")
+    password = simpledialog.askstring("Registro", "Nueva contraseña:", show="*")
+
+    if not username or not password:
+        messagebox.showwarning("Registro Cancelado", "Debes completar ambos campos.")
+        return
+
+    if confirmar(username):
+        messagebox.showerror("Error", "El usuario ya existe.")
+    else:
+        cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, password))
+        cnx.commit()
+        messagebox.showinfo("Éxito", f"Usuario '{username}' registrado con éxito.")
+
+def verificar(username, password):
+    query = "SELECT * FROM users WHERE username = %s AND password = %s"
+    cursor.execute(query, (username, password))
+    return cursor.fetchone() is not None
+
+def login():
+    login_window = tk.Tk()
+    login_window.withdraw()
+
+    while True:
+        opcion = messagebox.askquestion("Inicio", "¿Tienes una cuenta?", icon='question')
+        if opcion == 'no':
+            registrar()
+        else:
+            break
+
+    for _ in range(3):  #se le da 3 intentos al usuario
+        username = simpledialog.askstring("Login", "Usuario:")
+        password = simpledialog.askstring("Login", "Contraseña:", show='*')
+
+        if username and password and verificar(username, password):
+            messagebox.showinfo("Acceso Concedido", f"¡Bienvenido, {username}!")
+            return True
+        else:
+            messagebox.showerror("Error", "Usuario o contraseña incorrectos.")
+
+    messagebox.showwarning("Acceso Denegado", "Demasiados intentos fallidos.")
+    return False
+
+# Verifica el login antes de continuar
+if not login():
+    cursor.close()
+    cnx.close()
+    exit()
 
 
 def none(x):
