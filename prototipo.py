@@ -21,7 +21,20 @@ base = base.dropna(subset=categorias)
 playlistvector = playlist[categorias].mean().values.reshape(1, -1)
 
 # Obtener canciones que no estan en la base de datos
-cni = base[~base['Track Name'].isin(playlist['Track Name'])].copy()
 
+cni = base[~base['Track Name'].isin(playlist['Track Name'])].copy()
+# Calcula la distancia euclideana entre las playlists
+distances = euclidean_distances(cni[categorias], playlistvector)
+
+# Añadir distancias a la base
+cni['Distance'] = distances
+
+# Sortear por distancia y hacer un top 10
+recommendations = cni.sort_values(by='Distance').head(10)
+
+# enseñar las canciones recomendadas
+print(" Canciones recomendadas:\n")
+for i, row in recommendations.iterrows():
+    print(f"{i+1}. {row['Track Name']} – {row['Artist Name(s)']} ({row['Genres']})")
 
 
