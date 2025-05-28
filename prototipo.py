@@ -2,6 +2,9 @@ import pandas as pd
 from sklearn.metrics.pairwise import euclidean_distances
 import mysql.connector
 import math
+import tkinter as tk
+from tkinter import ttk
+
 
 def none(x):
     if isinstance(x, float) and math.isnan(x):
@@ -64,7 +67,50 @@ else:
     print("Canciones recomendadas:\n")
     for idx, (_, row) in enumerate(recommendations.iterrows(), 1):
         print(f"{idx}. {row['TrackName']} – {row['ArtistName']} ({row['Genres']})")
+def obtener_recomendaciones():
+    cancion_actual = playlist.iloc[0] if not playlist.empty else None
+    return recommendations, cancion_actual
+def crear_interfaz():
+    recomendaciones, cancion_actual = obtener_recomendaciones()
 
+    root = tk.Tk()
+    root.title("Mi Playlist - Estilo Spotify")
+    root.geometry("600x600")
+    root.configure(bg="#121212")
+
+    # Título
+    titulo = tk.Label(root, text="Recomendador Musical", font=("Helvetica", 20, "bold"), fg="white", bg="#121212")
+    titulo.pack(pady=20)
+
+    # Separador
+    ttk.Separator(root, orient='horizontal').pack(fill='x', padx=40, pady=10)
+
+    # Recomendaciones
+    recomendaciones_label = tk.Label(root, text=" Recomendaciones:", font=("Helvetica", 16), fg="#1DB954", bg="#121212")
+    recomendaciones_label.pack(pady=10)
+
+    # Lista de recomendaciones
+    frame = tk.Frame(root, bg="#121212")
+    frame.pack()
+
+    if not recomendaciones.empty:
+        for idx, row in enumerate(recomendaciones.itertuples(), 1):
+            rec = tk.Label(
+                frame,
+                text=f"{idx}. {row.TrackName} – {row.ArtistName} ({row.Genres})",
+                font=("Helvetica", 12),
+                fg="white",
+                bg="#121212",
+                anchor="w",
+                justify="left",
+                wraplength=550
+            )
+            rec.pack(anchor="w", padx=20, pady=2)
+    else:
+        tk.Label(frame, text="No hay recomendaciones.", fg="white", bg="#121212").pack()
+
+    root.mainloop()
+crear_interfaz()
 # Cierre de conexión
 cursor.close()
 cnx.close()
