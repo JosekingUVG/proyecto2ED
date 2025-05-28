@@ -2,6 +2,7 @@ import pandas as pd
 from sklearn.metrics.pairwise import euclidean_distances
 import mysql.connector
 import math
+import networkx as nx
 
 
 import tkinter as tk
@@ -115,19 +116,32 @@ else:
 
     # Filtra canciones que no están en la playlist
     cni = base[~base['TrackName'].isin(playlist_names)].copy()
+    #
+    # Crear grafo
+    G = nx.Graph()
 
-    # Calcula distancia euclidiana
-    distances = euclidean_distances(cni[categorias], playlistvector)
-    cni['Distance'] = distances
+    # Nodo virtual de la playlist
+    G.add_node("avg")
 
-    # Top 10 recomendaciones más cercanas
-    recommendations = cni.sort_values(by='Distance').head(10)
+    # Agrega nodos y aristas desde la playlist promedio hacia cada canción con su distancia como peso
+    for idx, row in cni.iterrows():
+        song_id = idx
+        G.add_node(song_id, **row.to_dict())
+        distancia = euclidean_distances([row[categorias].values], playlistvector)[0][0]
+        G.add_edge("avg", song_id, weight=distancia)
+
+    # Ordenar por menor distancia
+    vecinos = sorted(G["avg"].items(), key=lambda x: x[1]['weight'])[:10]
+    recomendations_indices = [song_id for song_id, _ in vecinos]
+    recommendations = cni.loc[recomendations_indices]
+    recommendations['Distance'] = [G["avg"][i]['weight'] for i in recomendations_indices]
 
     # Mostrar resultados con índice consecutivo
     print("Canciones recomendadas:\n")
     for idx, (_, row) in enumerate(recommendations.iterrows(), 1):
         print(f"{idx}. {row['TrackName']} – {row['ArtistName']} ({row['Genres']})")
 def obtener_recomendaciones():
+
     cancion_actual = playlist.iloc[0] if not playlist.empty else None
     return recommendations, cancion_actual
 def crear_interfaz():
