@@ -7,6 +7,9 @@ import networkx as nx
 import tkinter as tk
 from tkinter import ttk, simpledialog, messagebox, filedialog
 
+# Variable global para almacenar el usuario actual
+currentUser = None
+
 # Conexión a la base de datos
 cnx = mysql.connector.connect(
     host='localhost',
@@ -15,6 +18,24 @@ cnx = mysql.connector.connect(
     database='login'
 )
 cursor = cnx.cursor(dictionary=True)
+
+def crear_tabla_recomendaciones():
+    """Crea la tabla de recomendaciones si no existe"""
+    create_table_query = """
+    CREATE TABLE IF NOT EXISTS user_recommendations (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(50) NOT NULL,
+        track_name VARCHAR(255) NOT NULL,
+        artist_name VARCHAR(255) NOT NULL,
+        genres VARCHAR(255),
+        distance FLOAT,
+        recommendation_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (username) REFERENCES users(username)
+    )
+    """
+    cursor.execute(create_table_query)
+    cnx.commit()
+
 
 def confirmar(username):
     query = "SELECT * FROM users WHERE username = %s"
@@ -45,6 +66,7 @@ def verificar(username, password):
     return cursor.fetchone() is not None
 
 def login():
+    global current_user
     login_window = tk.Tk()
     login_window.withdraw()
 
@@ -60,6 +82,7 @@ def login():
         password = simpledialog.askstring("Login", "Contraseña:", show='*')
 
         if username and password and verificar(username, password):
+            current_user = username  # Guardar usuario actual
             messagebox.showinfo("Acceso Concedido", f"¡Bienvenido, {username}!")
             return True
         else:
@@ -67,6 +90,44 @@ def login():
 
     messagebox.showwarning("Acceso Denegado", "Demasiados intentos fallidos.")
     return False
+
+def guardar_recomendaciones(recommendations, username):
+    """Guarda las recomendaciones del usuario en la base de datos"""
+    # Primero eliminar recomendaciones anteriores del usuario
+    delete_query = "DELETE FROM user_recommendations WHERE username = %s"
+    cursor.execute(delete_query, (username,))
+    
+    # Insertar nuevas recomendaciones
+    insert_query = """
+    INSERT INTO user_recommendations (username, track_name, artist_name, genres, distance)
+    VALUES (%s, %s, %s, %s, %s)
+    """
+    
+    for _, row in recommendations.iterrows():
+        cursor.execute(insert_query, (
+            username,
+            row['TrackName'],
+            row['ArtistName'],
+            row.get('Genres', ''),
+            row['Distance']
+        ))
+    
+    cnx.commit()
+    print(f"Recomendaciones guardadas para el usuario: {username}")
+
+def obtener_recomendaciones_guardadas(username):
+    """Obtiene las recomendaciones guardadas de un usuario"""
+    query = """
+    SELECT track_name, artist_name, genres, distance, recommendation_date
+    FROM user_recommendations 
+    WHERE username = %s 
+    ORDER BY distance ASC
+    """
+    cursor.execute(query, (username,))
+    return cursor.fetchall()
+
+# Crear tabla de recomendaciones
+crear_tabla_recomendaciones()
 
 # Verifica el login antes de continuar
 if not login():
