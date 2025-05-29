@@ -5,7 +5,7 @@ import math
 import networkx as nx
 
 import tkinter as tk
-from tkinter import ttk, simpledialog, messagebox
+from tkinter import ttk, simpledialog, messagebox, filedialog
 
 # Conexión a la base de datos
 cnx = mysql.connector.connect(
@@ -55,7 +55,7 @@ def login():
         else:
             break
 
-    for _ in range(3):  #se le da 3 intentos al usuario
+    for _ in range(3):  # se le da 3 intentos al usuario
         username = simpledialog.askstring("Login", "Usuario:")
         password = simpledialog.askstring("Login", "Contraseña:", show='*')
 
@@ -74,6 +74,18 @@ if not login():
     cnx.close()
     exit()
 
+# Selección del CSV por el usuario
+root = tk.Tk()
+root.withdraw()
+csv_path = filedialog.askopenfilename(title="Selecciona tu playlist CSV", filetypes=[("CSV Files", "*.csv")])
+if not csv_path:
+    messagebox.showerror("Error", "No seleccionaste ningún archivo CSV.")
+    cursor.close()
+    cnx.close()
+    exit()
+
+# Leer CSV seleccionado
+playlist = pd.read_csv(csv_path)
 
 def none(x):
     if isinstance(x, float) and math.isnan(x):
@@ -81,7 +93,6 @@ def none(x):
     if isinstance(x, str) and x.strip() == '':
         return None
     return x
-
 
 # Cargar datos de la base de datos en un frame
 cursor.execute("SELECT * FROM songs")
@@ -91,9 +102,7 @@ base = pd.DataFrame(rows)
 # Eliminar canciones repetidas
 base = base.drop_duplicates(subset=['TrackName', 'ArtistName'])
 
-# Cargar playlist personal
-playlist = pd.read_csv("playlist1.csv")
-
+# Categorías de análisis
 categorias = [
     'Danceability', 'Energy', 'Key', 'Loudness', 'Mode',
     'Speechiness', 'Acousticness', 'Instrumentalness',
@@ -104,9 +113,9 @@ categorias = [
 playlist = playlist.dropna(subset=categorias)
 base = base.dropna(subset=categorias)
 
-# Verifica si hay datos para continuar
 if playlist.empty or base.empty:
     print("No hay suficientes datos para realizar recomendaciones.")
+    recommendations = pd.DataFrame()
 else:
     # Vector promedio de la playlist
     playlistvector = playlist[categorias].mean().values.reshape(1, -1)
@@ -116,35 +125,33 @@ else:
 
     # Filtra canciones que no están en la playlist
     cni = base[~base['TrackName'].isin(playlist_names)].copy()
-    #
+
     # Crear grafo
     G = nx.Graph()
-
-    # Nodo virtual de la playlist
     G.add_node("avg")
 
-    # Agrega nodos y aristas desde la playlist promedio hacia cada canción con su distancia como peso
     for idx, row in cni.iterrows():
         song_id = idx
         G.add_node(song_id, **row.to_dict())
         distancia = euclidean_distances([row[categorias].values], playlistvector)[0][0]
         G.add_edge("avg", song_id, weight=distancia)
 
-    # Ordenar por menor distancia
+    # Obtener 10 canciones más cercanas
     vecinos = sorted(G["avg"].items(), key=lambda x: x[1]['weight'])[:10]
     recomendations_indices = [song_id for song_id, _ in vecinos]
     recommendations = cni.loc[recomendations_indices]
     recommendations['Distance'] = [G["avg"][i]['weight'] for i in recomendations_indices]
 
-    # Mostrar resultados con índice consecutivo
+    # Mostrar por consola
     print("Canciones recomendadas:\n")
     for idx, (_, row) in enumerate(recommendations.iterrows(), 1):
         print(f"{idx}. {row['TrackName']} – {row['ArtistName']} ({row['Genres']})")
-def obtener_recomendaciones():
 
+def obtener_recomendaciones():
     cancion_actual = playlist.iloc[0] if not playlist.empty else None
     return recommendations, cancion_actual
-def crear_interfaz():
+
+def interfaz():
     recomendaciones, cancion_actual = obtener_recomendaciones()
 
     root = tk.Tk()
@@ -152,18 +159,14 @@ def crear_interfaz():
     root.geometry("600x600")
     root.configure(bg="#121212")
 
-    # Título
     titulo = tk.Label(root, text="Recomendador Musical", font=("Helvetica", 20, "bold"), fg="white", bg="#121212")
     titulo.pack(pady=20)
 
-    # Separador
     ttk.Separator(root, orient='horizontal').pack(fill='x', padx=40, pady=10)
 
-    # Recomendaciones
     recomendaciones_label = tk.Label(root, text=" Recomendaciones:", font=("Helvetica", 16), fg="#1DB954", bg="#121212")
     recomendaciones_label.pack(pady=10)
 
-    # Lista de recomendaciones
     frame = tk.Frame(root, bg="#121212")
     frame.pack()
 
@@ -184,7 +187,10 @@ def crear_interfaz():
         tk.Label(frame, text="No hay recomendaciones.", fg="white", bg="#121212").pack()
 
     root.mainloop()
-crear_interfaz()
+
+
+interfaz()
+
 # Cierre de conexión
 cursor.close()
 cnx.close()
