@@ -1,257 +1,220 @@
-import pandas as pd
-from sklearn.metrics.pairwise import euclidean_distances
-import mysql.connector
-import math
-import networkx as nx
-
+from neo4j import GraphDatabase
 import tkinter as tk
-from tkinter import ttk, simpledialog, messagebox, filedialog
+from tkinter import ttk, messagebox
+import mysql.connector
 
-# Variable global para almacenar el usuario actual
-currentUser = None
+# Configuración de Neo4j
+uri = "neo4j+ssc://43e3c12d.databases.neo4j.io"
+user = "neo4j"
+password = "GpiSXf6J8wwHOvfB6ABPdzSyftY4zNIBVGZIgIrRtmY"
+driver = GraphDatabase.driver(uri, auth=(user, password))
 
-# Conexión a la base de datos
-cnx = mysql.connector.connect(
-    host='localhost',
-    user='admin',
-    password='123',
-    database='login'
-)
-cursor = cnx.cursor(dictionary=True)
-
-def crear_tabla_recomendaciones():
-    """Crea la tabla de recomendaciones si no existe"""
-    create_table_query = """
-    CREATE TABLE IF NOT EXISTS user_recommendations (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        username VARCHAR(50) NOT NULL,
-        track_name VARCHAR(255) NOT NULL,
-        artist_name VARCHAR(255) NOT NULL,
-        genres VARCHAR(255),
-        distance FLOAT,
-        recommendation_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (username) REFERENCES users(username)
+# Conexión a MySQL
+def conectar_mysql():
+    return mysql.connector.connect(
+        host="localhost",
+        user="admin",
+        password="123",  # Cambia esto por la contraseña de tu usuario MySQL
+        database="login"
     )
-    """
-    cursor.execute(create_table_query)
-    cnx.commit()
 
-
-def confirmar(username):
-    query = "SELECT * FROM users WHERE username = %s"
-    cursor.execute(query, (username,))
-    return cursor.fetchone() is not None
-
-def registrar():
-    reg_window = tk.Tk()
-    reg_window.withdraw()
-
-    username = simpledialog.askstring("Registro", "Nuevo usuario:")
-    password = simpledialog.askstring("Registro", "Nueva contraseña:", show="*")
-
-    if not username or not password:
-        messagebox.showwarning("Registro Cancelado", "Debes completar ambos campos.")
-        return
-
-    if confirmar(username):
-        messagebox.showerror("Error", "El usuario ya existe.")
-    else:
-        cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, password))
-        cnx.commit()
-        messagebox.showinfo("Éxito", f"Usuario '{username}' registrado con éxito.")
-
-def verificar(username, password):
-    query = "SELECT * FROM users WHERE username = %s AND password = %s"
-    cursor.execute(query, (username, password))
-    return cursor.fetchone() is not None
-
+# Login de usuario
 def login():
-    global current_user
-    login_window = tk.Tk()
-    login_window.withdraw()
+    def verificar_login():
+        username = entry_usuario.get()
+        password = entry_contrasena.get()
+        conn = conectar_mysql()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE username=%s AND password=%s", (username, password))
+        resultado = cursor.fetchone()
+        conn.close()
 
-    while True:
-        opcion = messagebox.askquestion("Inicio", "¿Tienes una cuenta?", icon='question')
-        if opcion == 'no':
-            registrar()
-        else:
-            break
-
-    for _ in range(3):  # se le da 3 intentos al usuario
-        username = simpledialog.askstring("Login", "Usuario:")
-        password = simpledialog.askstring("Login", "Contraseña:", show='*')
-
-        if username and password and verificar(username, password):
-            current_user = username  # Guardar usuario actual
-            messagebox.showinfo("Acceso Concedido", f"¡Bienvenido, {username}!")
-            return True
+        if resultado:
+            login_window.destroy()
+            launch()
         else:
             messagebox.showerror("Error", "Usuario o contraseña incorrectos.")
 
-    messagebox.showwarning("Acceso Denegado", "Demasiados intentos fallidos.")
-    return False
+    login_window = tk.Tk()
+    login_window.title("Iniciar sesión")
 
-def guardar_recomendaciones(recommendations, username):
-    """Guarda las recomendaciones del usuario en la base de datos"""
-    # Primero eliminar recomendaciones anteriores del usuario
-    delete_query = "DELETE FROM user_recommendations WHERE username = %s"
-    cursor.execute(delete_query, (username,))
-    
-    # Insertar nuevas recomendaciones
-    insert_query = """
-    INSERT INTO user_recommendations (username, track_name, artist_name, genres, distance)
-    VALUES (%s, %s, %s, %s, %s)
-    """
-    
-    for _, row in recommendations.iterrows():
-        cursor.execute(insert_query, (
-            username,
-            row['TrackName'],
-            row['ArtistName'],
-            row.get('Genres', ''),
-            row['Distance']
-        ))
-    
-    cnx.commit()
-    print(f"Recomendaciones guardadas para el usuario: {username}")
+    ttk.Label(login_window, text="Usuario:").grid(row=0, column=0, padx=10, pady=10)
+    entry_usuario = ttk.Entry(login_window)
+    entry_usuario.grid(row=0, column=1)
 
-def obtener_recomendaciones_guardadas(username):
-    """Obtiene las recomendaciones guardadas de un usuario"""
+    ttk.Label(login_window, text="Contraseña:").grid(row=1, column=0, padx=10, pady=10)
+    entry_contrasena = ttk.Entry(login_window, show="*")
+    entry_contrasena.grid(row=1, column=1)
+
+    ttk.Button(login_window, text="Iniciar sesión", command=verificar_login).grid(row=2, column=0, columnspan=2, pady=10)
+    ttk.Button(login_window, text="Registrarse", command=registro).grid(row=3, column=0, columnspan=2, pady=5)
+
+    login_window.mainloop()
+
+# Registro de usuario
+def registro():
+    def guardar_usuario():
+        username = entry_usuario.get()
+        password = entry_contrasena.get()
+
+        if not username or not password:
+            messagebox.showerror("Error", "Completa todos los campos.")
+            return
+
+        conn = conectar_mysql()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, password))
+            conn.commit()
+            messagebox.showinfo("Éxito", "Usuario registrado correctamente.")
+            registro_window.destroy()
+        except mysql.connector.IntegrityError:
+            messagebox.showerror("Error", "El usuario ya existe.")
+        finally:
+            conn.close()
+
+    registro_window = tk.Toplevel()
+    registro_window.title("Registrarse")
+
+    ttk.Label(registro_window, text="Nuevo Usuario:").grid(row=0, column=0, padx=10, pady=10)
+    entry_usuario = ttk.Entry(registro_window)
+    entry_usuario.grid(row=0, column=1)
+
+    ttk.Label(registro_window, text="Contraseña:").grid(row=1, column=0, padx=10, pady=10)
+    entry_contrasena = ttk.Entry(registro_window, show="*")
+    entry_contrasena.grid(row=1, column=1)
+
+    ttk.Button(registro_window, text="Registrar", command=guardar_usuario).grid(row=2, column=0, columnspan=2, pady=10)
+
+# Obtener los generos disponibles
+def genre ():
+    query = "MATCH (t:Title) RETURN DISTINCT t.`top genre` AS genre ORDER BY genre"
+    with driver.session() as session:
+        result = session.run(query)
+        return [record["genre"] for record in result if record["genre"]]
+
+# Obtener valores unicos por los generos en el dropdown
+def valores_genero(genre):
     query = """
-    SELECT track_name, artist_name, genres, distance, recommendation_date
-    FROM user_recommendations 
-    WHERE username = %s 
-    ORDER BY distance ASC
+    MATCH (t:Title)
+    WHERE t.`top genre` = $genre
+    RETURN DISTINCT t.bpm AS bpm, t.dnce AS dnce, t.val AS val
     """
-    cursor.execute(query, (username,))
-    return cursor.fetchall()
+    with driver.session() as session:
+        result = session.run(query, genre=genre)
+        bpms, dnces, vals = set(), set(), set()
+        for record in result:
+            if record["bpm"] is not None:
+                bpms.add(int(record["bpm"]))
+            if record["dnce"] is not None:
+                dnces.add(int(record["dnce"]))
+            if record["val"] is not None:
+                vals.add(int(record["val"]))
+        return sorted(bpms), sorted(dnces), sorted(vals)
 
-# Crear tabla de recomendaciones
-crear_tabla_recomendaciones()
+# Buscar recomendaciones
+def recomendaciones1(genre, dance, valence, bpm):
+    query = """
+    MATCH (t:Title)
+    WHERE t.`top genre` = $genre
+      AND abs(t.dnce - $dance) <= 30
+      AND abs(t.val - $valence) <= 30
+      AND abs(t.bpm - $bpm) <= 30
+    WITH t, (
+        abs(t.dnce - $dance) +
+        abs(t.val - $valence) +
+        abs(t.bpm - $bpm)
+    ) AS distancia
+    RETURN t.title AS title
+    ORDER BY distancia ASC
+    LIMIT 25
+    """
+    with driver.session() as session:
+        results = session.run(query, genre=genre, dance=dance, valence=valence, bpm=bpm)
+        return [record["title"] for record in results]
 
-# Verifica el login antes de continuar
-if not login():
-    cursor.close()
-    cnx.close()
-    exit()
+# Actualizar dropdowns al cambiar género
+def actualizar_dropdowns(event=None):
+    genre = genre_var.get()
+    if not genre:
+        return
+    bpms, dnces, vals = valores_genero(genre)
 
-# Selección del CSV por el usuario
-root = tk.Tk()
-root.withdraw()
-csv_path = filedialog.askopenfilename(title="Selecciona tu playlist CSV", filetypes=[("CSV Files", "*.csv")])
-if not csv_path:
-    messagebox.showerror("Error", "No seleccionaste ningún archivo CSV.")
-    cursor.close()
-    cnx.close()
-    exit()
+    bpm_dropdown["values"] = bpms or [0]
+    dance_dropdown["values"] = dnces or [0]
+    valence_dropdown["values"] = vals or [0]
 
-# Leer CSV seleccionado
-playlist = pd.read_csv(csv_path)
+    if bpms:
+        bpm_var.set(bpms[0])
+    if dnces:
+        dance_var.set(dnces[0])
+    if vals:
+        valence_var.set(vals[0])
 
-def none(x):
-    if isinstance(x, float) and math.isnan(x):
-        return None
-    if isinstance(x, str) and x.strip() == '':
-        return None
-    return x
+# Buscar canciones al presionar botón
+def buscar():
+    genre = genre_var.get()
+    try:
+        dance = int(dance_var.get())
+        valence = int(valence_var.get())
+        bpm = int(bpm_var.get())
+    except ValueError:
+        messagebox.showerror("Error", "Selecciona valores válidos.")
+        return
 
-# Cargar datos de la base de datos en un frame
-cursor.execute("SELECT * FROM songs")
-rows = cursor.fetchall()
-base = pd.DataFrame(rows)
+    recomendaciones = recomendaciones1 (genre, dance, valence, bpm)
+    result_text.delete(1.0, tk.END)
+    if recomendaciones:
+        result_text.insert(tk.END, "Recomendaciones encontradas:\n\n")
+        for title in recomendaciones:
+            result_text.insert(tk.END, f"- {title}\n")
+    else:
+        result_text.insert(tk.END, "No se encontraron recomendaciones para esos parámetros.")
 
-# Eliminar canciones repetidas
-base = base.drop_duplicates(subset=['TrackName', 'ArtistName'])
-
-# Categorías de análisis
-categorias = [
-    'Danceability', 'Energy', 'Key', 'Loudness', 'Mode',
-    'Speechiness', 'Acousticness', 'Instrumentalness',
-    'Liveness', 'Valence', 'Tempo'
-]
-
-# Eliminar canciones con datos incompletos
-playlist = playlist.dropna(subset=categorias)
-base = base.dropna(subset=categorias)
-
-if playlist.empty or base.empty:
-    print("No hay suficientes datos para realizar recomendaciones.")
-    recommendations = pd.DataFrame()
-else:
-    # Vector promedio de la playlist
-    playlistvector = playlist[categorias].mean().values.reshape(1, -1)
-
-    # Crear conjunto con los nombres de las canciones en la playlist para filtrar
-    playlist_names = set(playlist['Track Name'])
-
-    # Filtra canciones que no están en la playlist
-    cni = base[~base['TrackName'].isin(playlist_names)].copy()
-
-    # Crear grafo
-    G = nx.Graph()
-    G.add_node("avg")
-
-    for idx, row in cni.iterrows():
-        song_id = idx
-        G.add_node(song_id, **row.to_dict())
-        distancia = euclidean_distances([row[categorias].values], playlistvector)[0][0]
-        G.add_edge("avg", song_id, weight=distancia)
-
-    # Obtener 10 canciones más cercanas
-    vecinos = sorted(G["avg"].items(), key=lambda x: x[1]['weight'])[:10]
-    recomendations_indices = [song_id for song_id, _ in vecinos]
-    recommendations = cni.loc[recomendations_indices]
-    recommendations['Distance'] = [G["avg"][i]['weight'] for i in recomendations_indices]
-
-    # Mostrar por consola
-    print("Canciones recomendadas:\n")
-    for idx, (_, row) in enumerate(recommendations.iterrows(), 1):
-        print(f"{idx}. {row['TrackName']} – {row['ArtistName']} ({row['Genres']})")
-
-def obtener_recomendaciones():
-    cancion_actual = playlist.iloc[0] if not playlist.empty else None
-    return recommendations, cancion_actual
-
-def interfaz():
-    recomendaciones, cancion_actual = obtener_recomendaciones()
+# inicia la aplicación principal
+def launch():
+    global genre_var, genre_dropdown, dance_var, dance_dropdown
+    global valence_var, valence_dropdown, bpm_var, bpm_dropdown, result_text
 
     root = tk.Tk()
-    root.title("Mi Playlist - Estilo Spotify")
-    root.geometry("600x600")
-    root.configure(bg="#121212")
+    root.title("Recomendador Musical")
 
-    titulo = tk.Label(root, text="Recomendador Musical", font=("Helvetica", 20, "bold"), fg="white", bg="#121212")
-    titulo.pack(pady=20)
+    frame = ttk.Frame(root, padding="10")
+    frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-    ttk.Separator(root, orient='horizontal').pack(fill='x', padx=40, pady=10)
+    # Dropdown de género
+    ttk.Label(frame, text="Género (top genre):").grid(row=0, column=0, sticky=tk.W)
+    genre_var = tk.StringVar()
+    genre_dropdown = ttk.Combobox(frame, textvariable=genre_var, state="readonly", width=30)
+    genre_dropdown.grid(row=0, column=1)
+    genre_dropdown["values"] = genre()
+    genre_dropdown.bind("<<ComboboxSelected>>", actualizar_dropdowns)
 
-    recomendaciones_label = tk.Label(root, text=" Recomendaciones:", font=("Helvetica", 16), fg="#1DB954", bg="#121212")
-    recomendaciones_label.pack(pady=10)
+    # Dropdowns
+    ttk.Label(frame, text="Danceability:").grid(row=1, column=0, sticky=tk.W)
+    dance_var = tk.StringVar()
+    dance_dropdown = ttk.Combobox(frame, textvariable=dance_var, state="readonly", width=30)
+    dance_dropdown.grid(row=1, column=1)
 
-    frame = tk.Frame(root, bg="#121212")
-    frame.pack()
+    ttk.Label(frame, text="Valence:").grid(row=2, column=0, sticky=tk.W)
+    valence_var = tk.StringVar()
+    valence_dropdown = ttk.Combobox(frame, textvariable=valence_var, state="readonly", width=30)
+    valence_dropdown.grid(row=2, column=1)
 
-    if not recomendaciones.empty:
-        for idx, row in enumerate(recomendaciones.itertuples(), 1):
-            rec = tk.Label(
-                frame,
-                text=f"{idx}. {row.TrackName} – {row.ArtistName} ({row.Genres})",
-                font=("Helvetica", 12),
-                fg="white",
-                bg="#121212",
-                anchor="w",
-                justify="left",
-                wraplength=550
-            )
-            rec.pack(anchor="w", padx=20, pady=2)
-    else:
-        tk.Label(frame, text="No hay recomendaciones.", fg="white", bg="#121212").pack()
+    ttk.Label(frame, text="BPM:").grid(row=3, column=0, sticky=tk.W)
+    bpm_var = tk.StringVar()
+    bpm_dropdown = ttk.Combobox(frame, textvariable=bpm_var, state="readonly", width=30)
+    bpm_dropdown.grid(row=3, column=1)
+
+    # Botón de búsqueda
+    search_button = ttk.Button(frame, text="Buscar Recomendaciones", command=buscar)
+    search_button.grid(row=4, column=0, columnspan=2, pady=10)
+
+    # Área de resultados
+    result_text = tk.Text(root, wrap=tk.WORD, height=15, width=60)
+    result_text.grid(row=1, column=0, padx=10, pady=10)
 
     root.mainloop()
 
-
-interfaz()
-
-# Cierre de conexión
-cursor.close()
-cnx.close()
+# Iniciar con login
+login()
